@@ -1,0 +1,21 @@
+b = imread('/Users/iremsimsek/Desktop/image 5.bmp');
+
+[HEIGHT, WIDTH, ~] = size(b);
+
+k = 1;
+a = zeros(1, HEIGHT*WIDTH*3);
+
+for i = HEIGHT:-1:1
+   for j = 1:WIDTH
+       a(k)   = b(i,j,1);
+       a(k+1) = b(i,j,2);
+       a(k+2) = b(i,j,3);
+       k = k + 3;
+   end
+end
+
+fid = fopen('/Users/iremsimsek/Desktop/FPGA/image 5.hex','wt');
+fprintf(fid, '%x\n', a);
+fclose(fid);
+disp('HEX file created');
+disp([HEIGHT, WIDTH]);
