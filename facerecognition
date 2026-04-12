@@ -1,0 +1,260 @@
+`timescale 1ns/1ps
+
+module image_processing_face;
+
+parameter WIDTH  = 647;
+parameter HEIGHT = 904;
+parameter TOTAL_PIXELS = WIDTH*HEIGHT;
+parameter INPUT_FILE  = "image 5.hex";
+parameter OUTPUT_FILE = "output.bmp";
+
+reg [7:0] mem [0:2443775];
+reg [7:0] R [0:TOTAL_PIXELS-1];
+reg [7:0] G [0:TOTAL_PIXELS-1];
+reg [7:0] B [0:TOTAL_PIXELS-1];
+reg [7:0] out_mem [0:WIDTH*HEIGHT*3-1];
+
+integer i, j, k;
+integer r, g, b;
+reg skin;
+integer skin_count;
+real skin_ratio;
+
+integer min_row, max_row, min_col, max_col;
+integer box_width, box_height;
+integer top_third_end, mid_third_end;
+integer eye_row_start, eye_row_end;
+integer nose_row_start, nose_row_end;
+integer mouth_row_start, mouth_row_end;
+integer left_dark, right_dark;
+integer left_col_sum, right_col_sum;
+integer left_count, right_count;
+integer left_eye_col, right_eye_col;
+integer eye_separation;
+real eye_sep_ratio;
+integer brightness;
+integer nose_dark_count;
+integer nose_left, nose_right;
+integer mouth_dark_count;
+integer mouth_left, mouth_right;
+integer mouth_width_val;
+reg eyes_found;
+reg nose_found;
+reg mouth_found;
+reg proportions_ok;
+
+initial begin
+
+    $display("Reading HEX file...");
+    $readmemh(INPUT_FILE, mem);
+
+    k = 0;
+    for(i = 0; i < HEIGHT; i = i + 1) begin
+        for(j = 0; j < WIDTH; j = j + 1) begin
+            R[i*WIDTH+j] = mem[k];
+            G[i*WIDTH+j] = mem[k+1];
+            B[i*WIDTH+j] = mem[k+2];
+            k = k + 3;
+        end
+    end
+
+    $display("Processing image...");
+
+    skin_count = 0;
+    min_row = HEIGHT; max_row = 0;
+    min_col = WIDTH;  max_col = 0;
+    k = 0;
+
+    for(i = 0; i < TOTAL_PIXELS; i = i + 1) begin
+        r = R[i];
+        g = G[i];
+        b = B[i];
+
+        skin = (
+            (r > 95) && (g > 40) && (b > 20) &&
+            (r > g) && (r > b) &&
+            ((r - g) > 15) &&
+            ((r - b) > 20) &&
+            ((r + g + b) > 250) &&
+            (r < 240) && (g < 200) &&
+            (b < 170)
+        );
+
+        if(skin) begin
+            skin_count = skin_count + 1;
+            if((i / WIDTH) < min_row) min_row = (i / WIDTH);
+            if((i / WIDTH) > max_row) max_row = (i / WIDTH);
+            if((i % WIDTH) < min_col) min_col = (i % WIDTH);
+            if((i % WIDTH) > max_col) max_col = (i % WIDTH);
+        end
+
+        k = k + 3;
+    end
+
+    skin_ratio = skin_count * 1.0 / TOTAL_PIXELS;
+    $display("Skin ratio = %f", skin_ratio);
+
+    box_width  = max_col - min_col;
+    box_height = max_row - min_row;
+
+    $display("Bounding box: rows %0d-%0d, cols %0d-%0d", min_row, max_row, min_col, max_col);
+    $display("Box width=%0d height=%0d", box_width, box_height);
+
+    // Feature positions instead of box proportions
+    proportions_ok = (box_width > 50) && (box_height > 50);
+
+    top_third_end   = min_row + (box_height / 3);
+    mid_third_end   = min_row + (box_height * 2 / 3);
+    eye_row_start   = min_row;
+    eye_row_end     = top_third_end;
+    nose_row_start  = top_third_end;
+    nose_row_end    = mid_third_end;
+    mouth_row_start = mid_third_end;
+    mouth_row_end   = max_row;
+
+    left_dark    = 0; right_dark    = 0;
+    left_col_sum = 0; right_col_sum = 0;
+    left_count   = 0; right_count   = 0;
+
+    for(i = eye_row_start; i < eye_row_end; i = i + 1) begin
+        for(j = min_col; j < max_col; j = j + 1) begin
+            brightness = R[i*WIDTH+j] + G[i*WIDTH+j] + B[i*WIDTH+j];
+            if(brightness < 150) begin
+                if(j < (min_col + max_col) / 2) begin
+                    left_dark    = left_dark + 1;
+                    left_col_sum = left_col_sum + j;
+                    left_count   = left_count + 1;
+                end
+                else begin
+                    right_dark    = right_dark + 1;
+                    right_col_sum = right_col_sum + j;
+                    right_count   = right_count + 1;
+                end
+            end
+        end
+    end
+
+    $display("Left eye dark pixels=%0d, Right eye dark pixels=%0d", left_dark, right_dark);
+
+    eyes_found = (left_dark > 50) && (right_dark > 50) &&
+                 (left_dark < 50000) && (right_dark < 50000) &&
+                 (left_dark > right_dark / 3) &&
+                 (right_dark > left_dark / 3);
+
+    if(left_count > 0 && right_count > 0) begin
+        left_eye_col   = left_col_sum  / left_count;
+        right_eye_col  = right_col_sum / right_count;
+        eye_separation = right_eye_col - left_eye_col;
+        eye_sep_ratio  = eye_separation * 1.0 / box_width;
+        $display("Eye separation ratio = %f", eye_sep_ratio);
+        eyes_found = eyes_found &&
+                     (eye_sep_ratio > 0.20) &&
+                     (eye_sep_ratio < 0.80);
+    end
+
+    $display("Eyes found: %0d", eyes_found);
+
+    nose_dark_count = 0;
+    nose_left  = min_col + box_width / 3;
+    nose_right = min_col + box_width * 2 / 3;
+
+    for(i = nose_row_start; i < nose_row_end; i = i + 1) begin
+        for(j = nose_left; j < nose_right; j = j + 1) begin
+            brightness = R[i*WIDTH+j] + G[i*WIDTH+j] + B[i*WIDTH+j];
+            if(brightness < 200)
+                nose_dark_count = nose_dark_count + 1;
+        end
+    end
+
+    $display("Nose dark pixels = %0d", nose_dark_count);
+    nose_found = (nose_dark_count > 50) && (nose_dark_count < 100000);
+    $display("Nose found: %0d", nose_found);
+
+    mouth_dark_count = 0;
+    mouth_left  = min_col + box_width / 4;
+    mouth_right = min_col + box_width * 3 / 4;
+
+    for(i = mouth_row_start; i < mouth_row_end; i = i + 1) begin
+        for(j = mouth_left; j < mouth_right; j = j + 1) begin
+            brightness = R[i*WIDTH+j] + G[i*WIDTH+j] + B[i*WIDTH+j];
+            if(brightness < 200)
+                mouth_dark_count = mouth_dark_count + 1;
+        end
+    end
+
+    mouth_width_val = mouth_right - mouth_left;
+    $display("Mouth dark pixels = %0d", mouth_dark_count);
+    mouth_found = (mouth_dark_count > 50) &&
+                  (mouth_dark_count < 100000) &&
+                  (mouth_width_val > nose_right - nose_left);
+    $display("Mouth found: %0d", mouth_found);
+
+    $display("----------------------------");
+    if(skin_ratio > 0.05 && eyes_found && nose_found && mouth_found && proportions_ok) begin
+        $display("HUMAN FACE DETECTED");
+        $display("  - Skin ratio: %f", skin_ratio);
+        $display("  - Both eyes found and balanced");
+        $display("  - Nose found");
+        $display("  - Mouth found");
+        $display("  - Feature positions correct");
+    end
+    else if(skin_ratio > 0.05) begin
+        $display("SKIN DETECTED BUT NOT A HUMAN FACE");
+        if(!eyes_found) begin
+            $display("  - Eyes not found or unbalanced (left=%0d, right=%0d)", left_dark, right_dark);
+            $display("  - One eye missing = not human");
+        end
+        if(!nose_found)     $display("  - Nose not found");
+        if(!mouth_found)    $display("  - Mouth not found");
+        if(!proportions_ok) $display("  - Face proportions wrong");
+    end
+    else
+        $display("NO FACE DETECTED");
+    $display("----------------------------");
+
+    write_bmp;
+    $display("Done.");
+end
+
+task write_bmp;
+    integer fd;
+    integer i;
+    integer row, col;
+    reg [7:0] header [0:53];
+    reg skin_px;
+    integer rr, gg, bb;
+    begin
+        header[0] = 66; header[1] = 77;
+        for(i = 2; i < 54; i = i + 1)
+            header[i] = 0;
+        fd = $fopen(OUTPUT_FILE, "wb");
+        for(i = 0; i < 54; i = i + 1)
+            $fwrite(fd, "%c", header[i]);
+        for(i = 0; i < TOTAL_PIXELS; i = i + 1) begin
+            row = i / WIDTH;
+            col = i % WIDTH;
+            rr = R[i]; gg = G[i]; bb = B[i];
+            skin_px = (
+                (rr > 95) && (gg > 40) && (bb > 20) &&
+                (rr > gg) && (rr > bb) &&
+                ((rr - gg) > 15) && ((rr - bb) > 20) &&
+                ((rr + gg + bb) > 250) &&
+                (rr < 240) && (gg < 200) && (bb < 170)
+            );
+            if((row == min_row || row == max_row) &&
+               (col >= min_col && col <= max_col))
+                $fwrite(fd, "%c%c%c", 8'd0, 8'd255, 8'd0);
+            else if((col == min_col || col == max_col) &&
+                    (row >= min_row && row <= max_row))
+                $fwrite(fd, "%c%c%c", 8'd0, 8'd255, 8'd0);
+            else if(skin_px)
+                $fwrite(fd, "%c%c%c", 8'd255, 8'd0, 8'd0);
+            else
+                $fwrite(fd, "%c%c%c", R[i], G[i], B[i]);
+        end
+        $fclose(fd);
+        $display("Output image written.");
+    end
+endtask
+
+endmodule
