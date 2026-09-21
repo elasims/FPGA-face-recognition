@@ -248,6 +248,22 @@ The design is written as behavioural Verilog for simulation. For synthesis onto 
 - Add a camera interface (e.g. OV7670) for live real-time input
 
 ---
+## Results
+
+Tested against a small labeled set of portraits and non-face images:
+
+| Input | Ground truth | System output | Result |
+|---|---|---|---|
+| Man (front-facing, plain background) | Face | HUMAN FACE DETECTED — skin ratio 0.179, eyes/nose/mouth found, positions correct | ✅ Correct |
+| Man (front-facing, plain background) | Face | HUMAN FACE DETECTED — skin ratio 0.071, eyes/nose/mouth found, positions correct | ✅ Correct |
+| Woman (profile/beauty shot) | Face | HUMAN FACE DETECTED — skin ratio 0.333, eyes/nose/mouth found, positions correct | ✅ Correct |
+| Parrot | Not a face | Skin ratio 0.043 — eye/nose/mouth-shaped dark regions detected but correctly rejected as non-human | ✅ Correct |
+| Castle/river landscape | Not a face | Skin ratio 0.0006 — NO FACE DETECTED | ✅ Correct |
+| building/landscape | Not a face | NO FACE DETECTED | ✅ Correct |
+
+**6/6 correct on this test set.**
+
+*Note: this is a small, informal test set rather than a standardized benchmark.*
 
 ## Authors
 
