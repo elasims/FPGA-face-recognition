@@ -5,7 +5,7 @@ b = imread('/Users/iremsimsek/Desktop/image 5.bmp');
 k = 1;
 a = zeros(1, HEIGHT*WIDTH*3);
 
-for i = HEIGHT:-1:1
+for i = 1:HEIGHT
    for j = 1:WIDTH
        a(k)   = b(i,j,1);
        a(k+1) = b(i,j,2);
