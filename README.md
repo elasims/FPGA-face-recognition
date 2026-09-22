@@ -16,7 +16,19 @@ This system takes a bitmap image as input and determines whether a human face is
 6. Making a final decision based on all features being present and correctly positioned
 
 The output is a processed BMP image with skin pixels highlighted in red and the detected face region outlined in green, along with a terminal report showing exactly which features were found or why detection failed.
+---
+## Pipeline
+## Pipeline
 
+```mermaid
+flowchart LR
+    A[BMP image] --> B[MATLAB: convert to HEX]
+    B --> C[Verilog: load into memory]
+    C --> D[Skin tone scan]
+    D --> E[Bounding box]
+    E --> F[Feature search: eyes/nose/mouth]
+    F --> G[Decision]
+```
 ---
 
 ## Requirements
@@ -45,6 +57,14 @@ FPGA/
 └── output.bmp             # Processed output image (generated on run)
 
 ---
+## Example Detections
+**Human face — correctly detected:**
+<img width="504" height="570" alt="image" src="https://github.com/user-attachments/assets/267d54cb-c119-4340-839b-f1a87e8d4245" />
+Skin ratio: 0.462 · Both eyes found and balanced · Nose found · Mouth found · Feature positions correct
+
+**Chimpanzee — correctly rejected:**
+<img width="604" height="456" alt="image" src="https://github.com/user-attachments/assets/8cdc9751-cae7-4271-95e7-4263b913635a" />
+Nose and mouth were detected, but eye positions were unbalanced (left=69,662 dark pixels, right=105,225 — nearly 1.5x difference), failing the human symmetry check. Shows the system performing genuine feature analysis, not just a skin-tone filter.
 
 ## How To Use
 
@@ -254,17 +274,15 @@ Tested against a small labeled set of portraits and non-face images:
 
 | Input | Ground truth | System output | Result |
 |---|---|---|---|
-| Man (front-facing, plain background) | Face | HUMAN FACE DETECTED — skin ratio 0.179, eyes/nose/mouth found, positions correct | ✅ Correct |
-| Man (front-facing, plain background) | Face | HUMAN FACE DETECTED — skin ratio 0.071, eyes/nose/mouth found, positions correct | ✅ Correct |
-| Woman (profile/beauty shot) | Face | HUMAN FACE DETECTED — skin ratio 0.333, eyes/nose/mouth found, positions correct | ✅ Correct |
-| Parrot | Not a face | Skin ratio 0.043 — eye/nose/mouth-shaped dark regions detected but correctly rejected as non-human | ✅ Correct |
+| Man (front-facing) | Face | HUMAN FACE DETECTED — skin ratio 0.179 | ✅ Correct |
+| Man (front-facing) | Face | HUMAN FACE DETECTED — skin ratio 0.071 | ✅ Correct |
+| Woman (profile) | Face | HUMAN FACE DETECTED — skin ratio 0.333 | ✅ Correct |
+| Man (backpack/street) | Face | HUMAN FACE DETECTED — skin ratio 0.462 | ✅ Correct |
+| Chimpanzee | Not a face | Nose/mouth found, eyes unbalanced — SKIN DETECTED BUT NOT A HUMAN FACE | ✅ Correct |
+| Parrot | Not a face | Skin ratio 0.043, features rejected | ✅ Correct |
 | Castle/river landscape | Not a face | Skin ratio 0.0006 — NO FACE DETECTED | ✅ Correct |
-| building/landscape | Not a face | NO FACE DETECTED | ✅ Correct |
 
-**6/6 correct on this test set.**
+**7/7 correct on this test set.**
 
 *Note: this is a small, informal test set rather than a standardized benchmark.*
 
-## Authors
-
-FPGA Image Processing Project
